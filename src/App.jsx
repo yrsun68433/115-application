@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { supabase } from './supabaseClient'
+import { supabase, isSupabaseConfigured } from './supabaseClient'
 
 const STATUS_OPTIONS = ['未確認', '已收件', '格式不符待補件', '已補件收件', '未提交申請書']
 
@@ -16,6 +16,34 @@ function fmtTime(d) {
 }
 
 export default function App() {
+  if (!isSupabaseConfigured) {
+    return (
+      <div style={S.wrap}>
+        <div style={{ ...S.inner, maxWidth: 640 }}>
+          <h1 style={S.h1}>115學年度 社科院院學士學位學程 一審審查頁面</h1>
+          <div style={{ ...S.warnBar, marginTop: 16 }}>
+            <b>尚未設定 Supabase 連線資訊，畫面因此無法載入資料。</b>
+            <div style={{ marginTop: 8 }}>
+              請確認部署平台（Vercel／Netlify）的 <b>環境變數</b> 已設定以下兩項，
+              且套用於 Production 環境，並在設定後重新部署（Redeploy）一次：
+            </div>
+            <ul style={{ marginTop: 8, marginBottom: 0 }}>
+              <li><code>VITE_SUPABASE_URL</code></li>
+              <li><code>VITE_SUPABASE_ANON_KEY</code></li>
+            </ul>
+            <div style={{ marginTop: 8 }}>
+              本機開發則是複製 <code>.env.example</code> 為 <code>.env</code> 並填入同樣兩個值。
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return <ApplicantTable />
+}
+
+function ApplicantTable() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)

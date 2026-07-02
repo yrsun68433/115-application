@@ -61,7 +61,28 @@ git push -u origin main
 
 `.env` 已列在 `.gitignore` 中，不會被上傳，Supabase 金鑰不會外洩到 GitHub 上。
 
-## 四、部署（以 Netlify 為例，與你既有的 115-ntu-coss 系統一致的作法）
+## 四、部署到 Vercel
+
+1. 至 [Vercel](https://vercel.com) → **Add New → Project**，選擇 GitHub repo（例如 `115-application`）。
+2. Vercel 會自動偵測到 Vite 專案，預設值即可：
+   - Build Command：`npm run build`
+   - Output Directory：`dist`
+   （本專案已附上 `vercel.json` 明確指定這兩項，避免自動偵測失準）
+3. **關鍵步驟**：展開 **Environment Variables**，新增：
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+   兩個都要勾選 **Production、Preview、Development** 三個環境（否則 Preview 部署或本機
+   `vercel dev` 會讀不到）。Vite 的環境變數是在 **build 當下**被打包進前端程式碼，
+   所以一定要在按下 Deploy「之前」就設定好；如果是先部署才補設定，要記得回到
+   Deployments 頁面手動 **Redeploy**，單純儲存環境變數不會自動觸發重新 build。
+4. 按 Deploy。完成後若畫面空白或 console 出現「缺少 VITE_SUPABASE_URL」的錯誤，
+   通常就是上一步環境變數沒設定或忘記 Redeploy。
+
+> 補充：`npm install` 若卡住或報奇怪的相依性錯誤，可以先在本機刪除
+> `node_modules`、重新 `npm install` 一次確認能跑，再把新產生的 `package-lock.json`
+> 一併 commit 上去，讓 Vercel 的安裝結果與本機一致。
+
+## 五、部署到 Netlify（另一種選擇，與你既有的 115-ntu-coss 系統一致的作法）
 
 1. 至 [Netlify](https://app.netlify.com) → **Add new site → Import an existing project**，
    選擇剛才 push 的 GitHub repo。
@@ -78,7 +99,7 @@ git push -u origin main
 若改用 GitHub Pages，記得在 `vite.config.js` 內加上對應的 `base` 路徑設定；
 Netlify 則不需要。
 
-## 五、資料欄位說明
+## 六、資料欄位說明
 
 | 欄位 | 說明 |
 |---|---|
@@ -87,13 +108,14 @@ Netlify 則不需要。
 | `name_note` | 姓名或學號的提醒事項（例如自填姓名與名冊寫法不同、學號誤植等） |
 | `note` | 可自由編輯的通知紀錄／備註欄 |
 
-## 六、⚠ 已知待確認事項（人數核對）
+## 七、⚠ 已知待確認事項（人數核對，已於對話中確認）
 
-依現有兩份文件（`一審規格不符_全_.pdf` 與 `第一階段_且符合_全_.pdf`）比對 45 人名冊後，
-共有 **10 位**申請人在兩份文件中都查無申請書，已標記為「未提交申請書」：
+依現有兩份文件（`一審規格不符_全_.pdf` 10 人、`第一階段_且符合_全_.pdf` 26 人）比對
+45 人名冊：兩份文件有 1 人重複（鄒常偉，先列於格式不符名單，補件後對應到合格名單），
+故不重複人數為 10 + 26 − 1 = 35 人已收件，45 − 35 = **10 位未提交申請書**（已於對話中
+與你確認鄒常偉重複屬實，數字維持 10 人，非原先預期的 7 或 9 人）：
 
 陳妍臻、楊正佑、翁子甯、陳甦民、蔡秉軒、邱苡晨、謝有恒、郭伊軒、劉昱麟、郭致維
 
-這個數字與你原先預期的 7 人不同，請協助確認是否有其中 3 人的申請書是透過其他管道
-（例如另一份尚未提供給我的文件）收到的；若有，請直接於畫面上把對應的人的狀態改為
-「已收件」，或告訴我名單我再幫你更新 `seed.sql`。
+若之後查出這 10 人中有人其實有繳交，可直接在畫面上把狀態改為「已收件」（會自動存進
+Supabase），或告訴我名單，我再更新 `seed.sql`。
