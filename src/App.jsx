@@ -234,7 +234,9 @@ function ApplicantTable() {
 }
 
 function Row({ r, onChange }) {
-  const rc = r.status === '格式不符待補件' || r.status === '未提交申請書' ? S.rowIssue
+  const rc =
+    r.status === '格式不符待補件' ? S.rowIssue
+    : r.status === '未提交申請書' ? S.rowMissing
     : r.status === '已收件' || r.status === '已補件收件' ? S.rowDone
     : S.row
 
@@ -358,8 +360,9 @@ const S = {
   th: { background: '#f3f2ee', textAlign: 'left', padding: '10px 8px', fontWeight: 600, color: '#5b6570', fontSize: 12, borderBottom: '1px solid #e3e6ea', whiteSpace: 'nowrap' },
   td: { padding: 8, borderBottom: '1px solid #e3e6ea', verticalAlign: 'top' },
   row: {},
-  rowIssue: { background: '#fbeeeb' },
-  rowDone: { background: '#eaf4ec' },
+  rowIssue: { background: '#fbeeeb' },   // 格式不符待補件 → 淡紅
+  rowMissing: { background: '#fdf6e3' }, // 未提交申請書 → 淡黃
+  rowDone: { background: '#eaf4ec' },    // 已收件 / 已補件收件 → 淡綠
   dept: { color: '#5b6570', fontSize: 12 },
   wish: { fontSize: 12, color: '#5b6570', lineHeight: 1.5 },
   nameNote: { fontWeight: 400, fontSize: 11, color: '#a3402f', marginTop: 2, maxWidth: 160, whiteSpace: 'normal' },
