@@ -169,20 +169,31 @@ function ApplicantTable() {
     })
   }, [rows, search, statusFilter])
 
-  // 各系所統計：申請人數、格式不合（含已補件完成）、未繳件（含後補）、放棄人數
+  // 各系所統計：政治系／經濟系／社會系／社工系／外系（其餘系所合併），
+  // 統計申請人數、格式不合（含已補件完成）、未繳件（含後補）、放棄人數
+  const classifyDept = (dep) => {
+    if (!dep) return '外系'
+    if (dep.startsWith('政治系')) return '政治系'
+    if (dep.startsWith('經濟系')) return '經濟系'
+    if (dep.startsWith('社會系')) return '社會系'
+    if (dep.startsWith('社工系')) return '社工系'
+    return '外系'
+  }
+  const DEPT_ORDER = ['政治系', '經濟系', '社會系', '社工系', '外系']
+
   const deptStats = useMemo(() => {
     const map = {}
+    for (const key of DEPT_ORDER) {
+      map[key] = { department: key, total: 0, formatIssue: 0, missing: 0, abandoned: 0 }
+    }
     for (const r of rows) {
-      const dep = r.department || '未標註系所'
-      if (!map[dep]) {
-        map[dep] = { department: dep, total: 0, formatIssue: 0, missing: 0, abandoned: 0 }
-      }
+      const dep = classifyDept(r.department)
       map[dep].total += 1
       if (r.status === '格式不符待補件' || r.status === '已補件收件') map[dep].formatIssue += 1
       if (r.status === '未提交申請書' || (r.status === '已收件' && r.notify_stage)) map[dep].missing += 1
       if (r.notify_stage === '放棄') map[dep].abandoned += 1
     }
-    return Object.values(map).sort((a, b) => b.total - a.total)
+    return DEPT_ORDER.map((key) => map[key])
   }, [rows])
 
   return (
