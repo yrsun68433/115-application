@@ -61,6 +61,7 @@ function ApplicantTable() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [savedFlag, setSavedFlag] = useState('')
+  const [deptOpen, setDeptOpen] = useState(false)
   const saveTimers = useRef({})
 
   // 初次載入
@@ -151,15 +152,38 @@ function ApplicantTable() {
       const matchStatus = !statusFilter || r.status === statusFilter
       return matchQ && matchStatus
     })
-    // 排序：其他狀態在最前，其次「已補件收件」（紫），最後「已收件」（綠），各分組內以序號排序
-    const rank = (s) => (s === '已補件收件' ? 1 : s === '已收件' ? 2 : 0)
+    // 排序：格式不符待補件（1）→ 未提交申請書（2）→ 格式補件完成／已補件收件（3）
+    // → 未繳件補完／已收件但曾走過通知流程（4）→ 其餘一般已收件、未確認（最後）
+    const rank = (r) => {
+      if (r.status === '格式不符待補件') return 0
+      if (r.status === '未提交申請書') return 1
+      if (r.status === '已補件收件') return 2
+      if (r.status === '已收件' && r.notify_stage) return 3
+      return 4
+    }
     return filtered.sort((a, b) => {
-      const ra = rank(a.status)
-      const rb = rank(b.status)
+      const ra = rank(a)
+      const rb = rank(b)
       if (ra !== rb) return ra - rb
       return a.id - b.id
     })
   }, [rows, search, statusFilter])
+
+  // 各系所統計：申請人數、格式不合（含已補件完成）、未繳件（含後補）、放棄人數
+  const deptStats = useMemo(() => {
+    const map = {}
+    for (const r of rows) {
+      const dep = r.department || '未標註系所'
+      if (!map[dep]) {
+        map[dep] = { department: dep, total: 0, formatIssue: 0, missing: 0, abandoned: 0 }
+      }
+      map[dep].total += 1
+      if (r.status === '格式不符待補件' || r.status === '已補件收件') map[dep].formatIssue += 1
+      if (r.status === '未提交申請書' || (r.status === '已收件' && r.notify_stage)) map[dep].missing += 1
+      if (r.notify_stage === '放棄') map[dep].abandoned += 1
+    }
+    return Object.values(map).sort((a, b) => b.total - a.total)
+  }, [rows])
 
   return (
     <div style={S.wrap}>
@@ -214,6 +238,36 @@ function ApplicantTable() {
           </div>
         )}
 
+        <div style={S.deptSection}>
+          <button onClick={() => setDeptOpen((o) => !o)} style={S.deptToggleBtn}>
+            {deptOpen ? '收合' : '展開'}各系所統計數據 {deptOpen ? '▲' : '▼'}
+          </button>
+          {deptOpen && (
+            <table style={S.deptTable}>
+              <thead>
+                <tr>
+                  <th style={S.deptTh}>系所</th>
+                  <th style={S.deptTh}>申請人數</th>
+                  <th style={S.deptTh}>格式不合人數（含已補件完成）</th>
+                  <th style={S.deptTh}>未繳件人數（含後補）</th>
+                  <th style={S.deptTh}>放棄人數</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deptStats.map((d) => (
+                  <tr key={d.department}>
+                    <td style={S.deptTd}>{d.department}</td>
+                    <td style={S.deptTd}>{d.total}</td>
+                    <td style={S.deptTd}>{d.formatIssue}</td>
+                    <td style={S.deptTd}>{d.missing}</td>
+                    <td style={S.deptTd}>{d.abandoned}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
         <div style={{ overflowX: 'auto' }}>
           <table style={S.table}>
             <thead>
@@ -253,11 +307,13 @@ function ApplicantTable() {
 }
 
 function Row({ r, onChange }) {
+  const isLateSubmit = r.status === '已收件' && !!r.notify_stage
   const rc =
     r.status === '未提交申請書' && r.notify_stage === '放棄' ? S.rowAbandoned
     : r.status === '格式不符待補件' ? S.rowIssue
     : r.status === '未提交申請書' ? S.rowMissing
     : r.status === '已補件收件' ? S.rowResupplied
+    : isLateSubmit ? S.rowLateSubmit
     : r.status === '已收件' ? S.rowDone
     : S.row
 
@@ -316,6 +372,9 @@ function Row({ r, onChange }) {
         </select>
         {r.status === '已補件收件' && (
           <div style={S.resuppliedTag}>原格式不符，已補件</div>
+        )}
+        {isLateSubmit && (
+          <div style={S.lateSubmitTag}>原未提交，已補交</div>
         )}
         {r.status === '未提交申請書' && (
           <select
@@ -404,9 +463,11 @@ const S = {
   rowIssue: { background: '#fbeeeb' },       // 格式不符待補件 → 淡紅
   rowMissing: { background: '#fdf6e3' },     // 未提交申請書 → 淡黃
   rowResupplied: { background: '#f0e6f7' },  // 已補件收件（原格式不符）→ 淡紫
+  rowLateSubmit: { background: '#e3f1f4' },  // 已收件但曾走通知流程（原未提交，已補交）→ 淡藍綠
   rowDone: { background: '#eaf4ec' },        // 已收件 → 淡綠
   rowAbandoned: { background: '#ececea', opacity: 0.55 }, // 未提交申請書＋已放棄 → 淡灰、整列變淺
   resuppliedTag: { fontSize: 10.5, color: '#6b3fa0', marginTop: 4 },
+  lateSubmitTag: { fontSize: 10.5, color: '#2f7080', marginTop: 4 },
   dept: { color: '#5b6570', fontSize: 12 },
   wish: { fontSize: 12, color: '#5b6570', lineHeight: 1.5 },
   nameNote: { fontWeight: 400, fontSize: 11, color: '#a3402f', marginTop: 2, maxWidth: 160, whiteSpace: 'normal' },
@@ -416,4 +477,18 @@ const S = {
   selectNotify: { width: 150, marginTop: 6, padding: '4px 6px', borderRadius: 6, fontSize: 11.5, border: '1px solid #e3e6ea' },
   textarea: { width: 220, minHeight: 44, padding: '5px 6px', border: '1px solid #e3e6ea', borderRadius: 6, fontSize: 12.5, resize: 'vertical', fontFamily: 'inherit' },
   footer: { marginTop: 24, fontSize: 12, color: '#5b6570', textAlign: 'center' },
+  deptSection: { marginBottom: 16 },
+  deptToggleBtn: {
+    padding: '8px 14px', border: '1px solid #e3e6ea', borderRadius: 8, background: '#fff',
+    fontSize: 13, cursor: 'pointer', color: '#1f2328',
+  },
+  deptTable: {
+    width: '100%', borderCollapse: 'collapse', background: '#fff', border: '1px solid #e3e6ea',
+    borderRadius: 10, fontSize: 13, marginTop: 10,
+  },
+  deptTh: {
+    background: '#f3f2ee', textAlign: 'left', padding: '8px 10px', fontWeight: 600,
+    color: '#5b6570', fontSize: 12, borderBottom: '1px solid #e3e6ea',
+  },
+  deptTd: { padding: '7px 10px', borderBottom: '1px solid #f0efec' },
 }
