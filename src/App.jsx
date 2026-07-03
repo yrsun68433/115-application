@@ -131,10 +131,11 @@ function ApplicantTable() {
   }
 
   const counts = useMemo(() => {
-    const c = { total: rows.length, 未確認: 0, 已收件: 0, 格式不符待補件: 0, 已補件收件: 0, 未提交申請書: 0, noContact: 0 }
+    const c = { total: rows.length, 未確認: 0, 已收件: 0, 格式不符待補件: 0, 已補件收件: 0, 未提交申請書: 0, noContact: 0, 放棄: 0 }
     for (const r of rows) {
       c[r.status] = (c[r.status] || 0) + 1
       if (!r.phone && !r.email) c.noContact += 1
+      if (r.notify_stage === '放棄') c.放棄 += 1
     }
     return c
   }, [rows])
@@ -173,11 +174,10 @@ function ApplicantTable() {
 
         <div style={S.stats}>
           <Stat label="申請總人數" value={counts.total} />
+          <Stat label="放棄" value={counts.放棄} tone="issue" />
           <Stat label="已收件" value={counts.已收件 + counts.已補件收件} tone="ok" />
           <Stat label="格式不符待補件" value={counts.格式不符待補件} tone="issue" />
           <Stat label="未提交申請書" value={counts.未提交申請書} tone="warn" />
-          <Stat label="未確認" value={counts.未確認} />
-          <Stat label="缺聯絡方式" value={counts.noContact} tone="issue" />
         </div>
 
         <div style={S.controls}>
