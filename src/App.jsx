@@ -12,13 +12,14 @@ const STATUS_STYLE = {
 }
 
 // 「未提交申請書」底下的通知進度子選項
-const NOTIFY_OPTIONS = ['', '通知1', '通知2', '成功']
+const NOTIFY_OPTIONS = ['', '通知1', '通知2', '成功', '放棄']
 
 const NOTIFY_STYLE = {
   '': { bg: '#ffffff', fg: '#5b6570' },
-  通知1: { bg: '#fdf6e3', fg: '#6b5200' },
-  通知2: { bg: '#fbeeeb', fg: '#a3402f' },
-  成功: { bg: '#eaf4ec', fg: '#2f6b3a' },
+  通知1: { bg: '#fdf6e3', fg: '#8a6d00' },   // 淡黃
+  通知2: { bg: '#fce3cf', fg: '#a3540f' },   // 淡橘（明顯不同於通知1）
+  成功: { bg: '#eaf4ec', fg: '#2f6b3a' },     // 淡綠
+  放棄: { bg: '#e4e4e2', fg: '#8a8d91' },     // 灰，表示不再追蹤
 }
 
 function fmtTime(d) {
@@ -245,7 +246,8 @@ function ApplicantTable() {
 
 function Row({ r, onChange }) {
   const rc =
-    r.status === '格式不符待補件' ? S.rowIssue
+    r.status === '未提交申請書' && r.notify_stage === '放棄' ? S.rowAbandoned
+    : r.status === '格式不符待補件' ? S.rowIssue
     : r.status === '未提交申請書' ? S.rowMissing
     : r.status === '已收件' || r.status === '已補件收件' ? S.rowDone
     : S.row
@@ -390,6 +392,7 @@ const S = {
   rowIssue: { background: '#fbeeeb' },   // 格式不符待補件 → 淡紅
   rowMissing: { background: '#fdf6e3' }, // 未提交申請書 → 淡黃
   rowDone: { background: '#eaf4ec' },    // 已收件 / 已補件收件 → 淡綠
+  rowAbandoned: { background: '#ececea', opacity: 0.55 }, // 未提交申請書＋已放棄 → 淡灰、整列變淺
   dept: { color: '#5b6570', fontSize: 12 },
   wish: { fontSize: 12, color: '#5b6570', lineHeight: 1.5 },
   nameNote: { fontWeight: 400, fontSize: 11, color: '#a3402f', marginTop: 2, maxWidth: 160, whiteSpace: 'normal' },
