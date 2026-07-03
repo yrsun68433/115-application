@@ -132,11 +132,12 @@ function ApplicantTable() {
   }
 
   const counts = useMemo(() => {
-    const c = { total: rows.length, 未確認: 0, 已收件: 0, 格式不符待補件: 0, 已補件收件: 0, 未提交申請書: 0, noContact: 0, 放棄: 0 }
+    const c = { total: rows.length, 未確認: 0, 已收件: 0, 格式不符待補件: 0, 已補件收件: 0, 未提交申請書: 0, noContact: 0, 放棄: 0, lateSubmit: 0 }
     for (const r of rows) {
       c[r.status] = (c[r.status] || 0) + 1
       if (!r.phone && !r.email) c.noContact += 1
       if (r.notify_stage === '放棄') c.放棄 += 1
+      if (r.status === '已收件' && r.notify_stage) c.lateSubmit += 1
     }
     return c
   }, [rows])
@@ -220,7 +221,12 @@ function ApplicantTable() {
           <Stat label="放棄" value={counts.放棄} tone="issue" />
           <Stat label="已收件" value={counts.已收件 + counts.已補件收件} tone="ok" />
           <Stat label="格式不符待補件" value={counts.格式不符待補件} tone="issue" />
-          <Stat label="未提交申請書" value={counts.未提交申請書} tone="warn" />
+          <Stat
+            label="未提交申請書（目前仍缺）"
+            value={counts.未提交申請書}
+            tone="warn"
+            sub={`原名單共 ${counts.未提交申請書 + counts.lateSubmit} 人・已提交 ${counts.lateSubmit} 人・放棄 ${counts.放棄} 人`}
+          />
         </div>
 
         <div style={S.controls}>
@@ -417,12 +423,13 @@ function Row({ r, onChange }) {
   )
 }
 
-function Stat({ label, value, tone }) {
+function Stat({ label, value, tone, sub }) {
   const toneColor = tone === 'ok' ? '#2f6b3a' : tone === 'issue' ? '#a3402f' : tone === 'warn' ? '#b8860b' : '#1f2328'
   return (
     <div style={S.stat}>
       <div style={{ ...S.statNum, color: toneColor }}>{value}</div>
       <div style={S.statLbl}>{label}</div>
+      {sub && <div style={S.statSub}>{sub}</div>}
     </div>
   )
 }
@@ -463,6 +470,7 @@ const S = {
   stat: { background: '#fff', border: '1px solid #e3e6ea', borderRadius: 10, padding: '12px 18px', minWidth: 110 },
   statNum: { fontSize: 22, fontWeight: 700, lineHeight: 1.1 },
   statLbl: { fontSize: 12, color: '#5b6570', marginTop: 2 },
+  statSub: { fontSize: 10.5, color: '#8a8d91', marginTop: 4, lineHeight: 1.5 },
   controls: { display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' },
   search: { flex: 1, minWidth: 200, padding: '9px 12px', border: '1px solid #e3e6ea', borderRadius: 8, fontSize: 13, background: '#fff' },
   filterSelect: { padding: '9px 10px', border: '1px solid #e3e6ea', borderRadius: 8, fontSize: 13, background: '#fff' },
