@@ -7,7 +7,7 @@ const STATUS_STYLE = {
   未確認: { bg: '#f3f2ee', fg: '#5b6570' },
   已收件: { bg: '#eaf4ec', fg: '#2f6b3a' },
   格式不符待補件: { bg: '#fbeeeb', fg: '#a3402f' },
-  已補件收件: { bg: '#eaf4ec', fg: '#2f6b3a' },
+  已補件收件: { bg: '#f0e6f7', fg: '#6b3fa0' },
   未提交申請書: { bg: '#fdf6e3', fg: '#6b5200' },
 }
 
@@ -142,7 +142,7 @@ function ApplicantTable() {
 
   const visibleRows = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return rows.filter((r) => {
+    const filtered = rows.filter((r) => {
       const matchQ =
         !q ||
         r.name.toLowerCase().includes(q) ||
@@ -150,6 +150,14 @@ function ApplicantTable() {
         r.department.toLowerCase().includes(q)
       const matchStatus = !statusFilter || r.status === statusFilter
       return matchQ && matchStatus
+    })
+    // 排序：其他狀態在最前，其次「已補件收件」（紫），最後「已收件」（綠），各分組內以序號排序
+    const rank = (s) => (s === '已補件收件' ? 1 : s === '已收件' ? 2 : 0)
+    return filtered.sort((a, b) => {
+      const ra = rank(a.status)
+      const rb = rank(b.status)
+      if (ra !== rb) return ra - rb
+      return a.id - b.id
     })
   }, [rows, search, statusFilter])
 
@@ -249,7 +257,8 @@ function Row({ r, onChange }) {
     r.status === '未提交申請書' && r.notify_stage === '放棄' ? S.rowAbandoned
     : r.status === '格式不符待補件' ? S.rowIssue
     : r.status === '未提交申請書' ? S.rowMissing
-    : r.status === '已收件' || r.status === '已補件收件' ? S.rowDone
+    : r.status === '已補件收件' ? S.rowResupplied
+    : r.status === '已收件' ? S.rowDone
     : S.row
 
   return (
@@ -305,6 +314,9 @@ function Row({ r, onChange }) {
             </option>
           ))}
         </select>
+        {r.status === '已補件收件' && (
+          <div style={S.resuppliedTag}>原格式不符，已補件</div>
+        )}
         {r.status === '未提交申請書' && (
           <select
             value={r.notify_stage || ''}
@@ -389,10 +401,12 @@ const S = {
   th: { background: '#f3f2ee', textAlign: 'left', padding: '10px 8px', fontWeight: 600, color: '#5b6570', fontSize: 12, borderBottom: '1px solid #e3e6ea', whiteSpace: 'nowrap' },
   td: { padding: 8, borderBottom: '1px solid #e3e6ea', verticalAlign: 'top' },
   row: {},
-  rowIssue: { background: '#fbeeeb' },   // 格式不符待補件 → 淡紅
-  rowMissing: { background: '#fdf6e3' }, // 未提交申請書 → 淡黃
-  rowDone: { background: '#eaf4ec' },    // 已收件 / 已補件收件 → 淡綠
+  rowIssue: { background: '#fbeeeb' },       // 格式不符待補件 → 淡紅
+  rowMissing: { background: '#fdf6e3' },     // 未提交申請書 → 淡黃
+  rowResupplied: { background: '#f0e6f7' },  // 已補件收件（原格式不符）→ 淡紫
+  rowDone: { background: '#eaf4ec' },        // 已收件 → 淡綠
   rowAbandoned: { background: '#ececea', opacity: 0.55 }, // 未提交申請書＋已放棄 → 淡灰、整列變淺
+  resuppliedTag: { fontSize: 10.5, color: '#6b3fa0', marginTop: 4 },
   dept: { color: '#5b6570', fontSize: 12 },
   wish: { fontSize: 12, color: '#5b6570', lineHeight: 1.5 },
   nameNote: { fontWeight: 400, fontSize: 11, color: '#a3402f', marginTop: 2, maxWidth: 160, whiteSpace: 'normal' },
