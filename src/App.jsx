@@ -11,6 +11,16 @@ const STATUS_STYLE = {
   未提交申請書: { bg: '#fdf6e3', fg: '#6b5200' },
 }
 
+// 「未提交申請書」底下的通知進度子選項
+const NOTIFY_OPTIONS = ['', '通知1', '通知2', '成功']
+
+const NOTIFY_STYLE = {
+  '': { bg: '#ffffff', fg: '#5b6570' },
+  通知1: { bg: '#fdf6e3', fg: '#6b5200' },
+  通知2: { bg: '#fbeeeb', fg: '#a3402f' },
+  成功: { bg: '#eaf4ec', fg: '#2f6b3a' },
+}
+
 function fmtTime(d) {
   return d.toLocaleTimeString('zh-TW', { hour12: false })
 }
@@ -293,6 +303,23 @@ function Row({ r, onChange }) {
             </option>
           ))}
         </select>
+        {r.status === '未提交申請書' && (
+          <select
+            value={r.notify_stage || ''}
+            onChange={(e) => onChange(r.id, 'notify_stage', e.target.value)}
+            style={{
+              ...S.selectNotify,
+              background: NOTIFY_STYLE[r.notify_stage || '']?.bg,
+              color: NOTIFY_STYLE[r.notify_stage || '']?.fg,
+            }}
+          >
+            {NOTIFY_OPTIONS.map((n) => (
+              <option key={n || '未通知'} value={n}>
+                {n || '未通知'}
+              </option>
+            ))}
+          </select>
+        )}
       </td>
       <td style={S.td}>
         <textarea
@@ -369,6 +396,7 @@ const S = {
   inputSm: { width: 120, padding: '5px 6px', border: '1px solid #e3e6ea', borderRadius: 6, fontSize: 12.5 },
   inputMissing: { borderColor: '#e2b6ac', background: '#fff8f6' },
   select: { width: 150, padding: '5px 6px', borderRadius: 6, fontSize: 12.5, border: '1px solid #e3e6ea' },
+  selectNotify: { width: 150, marginTop: 6, padding: '4px 6px', borderRadius: 6, fontSize: 11.5, border: '1px solid #e3e6ea' },
   textarea: { width: 220, minHeight: 44, padding: '5px 6px', border: '1px solid #e3e6ea', borderRadius: 6, fontSize: 12.5, resize: 'vertical', fontFamily: 'inherit' },
   footer: { marginTop: 24, fontSize: 12, color: '#5b6570', textAlign: 'center' },
 }
