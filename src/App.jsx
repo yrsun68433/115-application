@@ -59,6 +59,15 @@ function buildEligibilityHints(r) {
   return hints
 }
 
+// 分頁設定：總表看全部，其餘分頁各自只顯示該階段需要處理的人
+const TABS = [
+  { id: '總表', label: '總表' },
+  { id: '未提交申請書', label: '未提交申請書' },
+  { id: '格式不符待補件', label: '格式不符待補件' },
+  { id: '資格判定', label: '第一階段資格判定' },
+  { id: '已完成', label: '已完成（正常）' },
+]
+
 function fmtTime(d) {
   return d.toLocaleTimeString('zh-TW', { hour12: false })
 }
@@ -96,6 +105,7 @@ function ApplicantTable() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
   const [search, setSearch] = useState('')
+  const [activeTab, setActiveTab] = useState('總表')
   const [statusFilter, setStatusFilter] = useState('')
   const [eligibilityFilter, setEligibilityFilter] = useState('')
   const [savedFlag, setSavedFlag] = useState('')
@@ -187,16 +197,43 @@ function ApplicantTable() {
     return c
   }, [rows])
 
+  // 依分頁決定顯示哪些人：總表看全部，其餘分頁各自只看該階段需處理的人
+  function rowsForTab(tab, list) {
+    switch (tab) {
+      case '未提交申請書':
+        return list.filter((r) => r.status === '未提交申請書')
+      case '格式不符待補件':
+        return list.filter((r) => r.status === '格式不符待補件')
+      case '資格判定':
+        return list.filter((r) => (r.eligibility_status || '未判定') !== '符合')
+      case '已完成':
+        return list.filter(
+          (r) => (r.status === '已收件' || r.status === '已補件收件') && r.eligibility_status === '符合'
+        )
+      default:
+        return list
+    }
+  }
+
+  const tabCounts = useMemo(() => {
+    const c = {}
+    for (const t of TABS) c[t.id] = rowsForTab(t.id, rows).length
+    return c
+  }, [rows])
+
   const visibleRows = useMemo(() => {
     const q = search.trim().toLowerCase()
-    const filtered = rows.filter((r) => {
+    const base = rowsForTab(activeTab, rows)
+    const filtered = base.filter((r) => {
       const matchQ =
         !q ||
         r.name.toLowerCase().includes(q) ||
         r.student_id.toLowerCase().includes(q) ||
         r.department.toLowerCase().includes(q)
-      const matchStatus = !statusFilter || r.status === statusFilter
-      const matchEligibility = !eligibilityFilter || (r.eligibility_status || '未判定') === eligibilityFilter
+      // 收件狀態／資格狀態下拉篩選只在「總表」分頁生效，其餘分頁已經是特定條件的子集
+      const matchStatus = activeTab !== '總表' || !statusFilter || r.status === statusFilter
+      const matchEligibility =
+        activeTab !== '總表' || !eligibilityFilter || (r.eligibility_status || '未判定') === eligibilityFilter
       return matchQ && matchStatus && matchEligibility
     })
     // 排序：格式不符待補件（1）→ 未提交申請書（2）→ 格式補件完成／已補件收件（3）
@@ -214,7 +251,7 @@ function ApplicantTable() {
       if (ra !== rb) return ra - rb
       return a.id - b.id
     })
-  }, [rows, search, statusFilter, eligibilityFilter])
+  }, [rows, search, statusFilter, eligibilityFilter, activeTab])
 
   // 各系所統計：政治系／經濟系／社會系／社工系／外系（其餘系所合併），
   // 統計申請人數、格式不合（含已補件完成）、未繳件（含後補）、放棄人數、資格不符人數
@@ -252,18 +289,42 @@ function ApplicantTable() {
           共 {counts.total} 位申請人・資料即時儲存於 Supabase，可多裝置同步編輯
         </p>
 
+        <div style={S.tabBar}>
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              style={{
+                ...S.tabBtn,
+                ...(activeTab === t.id ? S.tabBtnActive : {}),
+              }}
+            >
+              {t.label}
+              <span
+                style={{
+                  ...S.tabCount,
+                  background: activeTab === t.id ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.08)',
+                  color: activeTab === t.id ? '#fff' : '#5b6570',
+                }}
+              >
+                {tabCounts[t.id] ?? 0}
+              </span>
+            </button>
+          ))}
+        </div>
+
         <div style={S.infoBar}>
           資料來源：115初審紀錄.docx、115院學士申請雙主修校對表.pdf、一審規格不符_全_.pdf、第一階段_且符合_全_.pdf（115.07.02 整理）。
           「已收件」之申請書格式已完成初步核對，無需再次檢查；如有補充或更正，請直接於下表備註欄記錄。
         </div>
 
-        {counts.未提交申請書 > 0 && (
+        {(activeTab === '總表' || activeTab === '未提交申請書') && counts.未提交申請書 > 0 && (
           <div style={S.warnBar}>
             提醒：目前有 {counts.未提交申請書} 位在名冊中登記、但未查得申請書電子檔的學生，已標記為「未提交申請書」，請確認是否遺漏收件或需個別聯繫確認。
           </div>
         )}
 
-        {counts.資格不符 > 0 && (
+        {(activeTab === '總表' || activeTab === '資格判定') && counts.資格不符 > 0 && (
           <div style={S.issueBar}>
             提醒：目前有 {counts.資格不符} 位經第一階段（平均成績／名次）判定為「不符」資格，請確認是否需個別通知或進入後續處理流程。
           </div>
@@ -291,22 +352,26 @@ function ApplicantTable() {
             onChange={(e) => setSearch(e.target.value)}
             style={S.search}
           />
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={S.filterSelect}>
-            <option value="">全部收件狀態</option>
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          <select value={eligibilityFilter} onChange={(e) => setEligibilityFilter(e.target.value)} style={S.filterSelect}>
-            <option value="">全部資格狀態</option>
-            {ELIGIBILITY_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+          {activeTab === '總表' && (
+            <>
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={S.filterSelect}>
+                <option value="">全部收件狀態</option>
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+              <select value={eligibilityFilter} onChange={(e) => setEligibilityFilter(e.target.value)} style={S.filterSelect}>
+                <option value="">全部資格狀態</option>
+                {ELIGIBILITY_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           <span style={S.savedFlag}>{savedFlag || (loading ? '載入中...' : '已連線 Supabase')}</span>
         </div>
 
@@ -317,6 +382,7 @@ function ApplicantTable() {
           </div>
         )}
 
+        {activeTab === '總表' && (
         <div style={S.deptSection}>
           <button onClick={() => setDeptOpen((o) => !o)} style={S.deptToggleBtn}>
             {deptOpen ? '收合' : '展開'}各系所統計數據 {deptOpen ? '▲' : '▼'}
@@ -348,6 +414,7 @@ function ApplicantTable() {
             </table>
           )}
         </div>
+        )}
 
         <div style={{ overflowX: 'auto' }}>
           <table style={S.table}>
@@ -585,6 +652,16 @@ const S = {
   inner: { maxWidth: 1320, margin: '0 auto' },
   h1: { fontSize: 20, fontWeight: 700, margin: '0 0 4px', letterSpacing: '0.02em' },
   subtitle: { color: '#5b6570', fontSize: 13, marginBottom: 16 },
+  tabBar: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 },
+  tabBtn: {
+    display: 'flex', alignItems: 'center', gap: 6,
+    padding: '8px 14px', border: '1px solid #e3e6ea', borderRadius: 8,
+    background: '#fff', color: '#5b6570', fontSize: 13, cursor: 'pointer',
+  },
+  tabBtnActive: { background: '#1f2328', color: '#fff', borderColor: '#1f2328' },
+  tabCount: {
+    fontSize: 11, padding: '1px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.08)',
+  },
   infoBar: {
     background: '#eef4f2',
     border: '1px solid #cfe0da',
