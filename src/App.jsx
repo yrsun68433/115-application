@@ -22,6 +22,43 @@ const NOTIFY_STYLE = {
   放棄: { bg: '#e4e4e2', fg: '#8a8d91' },     // 灰，表示不再追蹤
 }
 
+// 雙主修申請第一階段資格判定
+const ELIGIBILITY_OPTIONS = ['未判定', '符合', '不符']
+
+const ELIGIBILITY_STYLE = {
+  未判定: { bg: '#f3f2ee', fg: '#5b6570' },
+  符合: { bg: '#eaf4ec', fg: '#2f6b3a' },
+  不符: { bg: '#fbeeeb', fg: '#a3402f' },
+}
+
+// 基礎課程 3 學分修習狀態（114 年參考條件之一：未修習基礎課程至少 3 學分）
+const FOUNDATION_OPTIONS = ['待確認', '已修', '未修']
+
+const FOUNDATION_STYLE = {
+  待確認: { bg: '#f3f2ee', fg: '#5b6570' },
+  已修: { bg: '#eaf4ec', fg: '#2f6b3a' },
+  未修: { bg: '#fbeeeb', fg: '#a3402f' },
+}
+
+// GPA 門檻參考值（依 114 年資訊：前 2 學期 GPA 3.3 以上）
+const GPA_THRESHOLD = 3.3
+
+// 依 114 年參考條件（未繳資料／GPA 未達標／未修基礎課程 3 學分）產生提示文字，
+// 僅供人工判斷參考，不會自動變更「第一階段資格」欄位
+function buildEligibilityHints(r) {
+  const hints = []
+  if (r.status === '未提交申請書' || r.notify_stage === '放棄') {
+    hints.push('未繳交資料')
+  }
+  if (r.avg_score != null && r.avg_score < GPA_THRESHOLD) {
+    hints.push(`GPA 未達 ${GPA_THRESHOLD}`)
+  }
+  if (r.foundation_credit_met === '未修') {
+    hints.push('未修基礎課程 3 學分')
+  }
+  return hints
+}
+
 function fmtTime(d) {
   return d.toLocaleTimeString('zh-TW', { hour12: false })
 }
@@ -60,6 +97,7 @@ function ApplicantTable() {
   const [loadError, setLoadError] = useState(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [eligibilityFilter, setEligibilityFilter] = useState('')
   const [savedFlag, setSavedFlag] = useState('')
   const [deptOpen, setDeptOpen] = useState(false)
   const saveTimers = useRef({})
@@ -120,6 +158,8 @@ function ApplicantTable() {
 
     const key = `${id}:${field}`
     clearTimeout(saveTimers.current[key])
+    const isTextField = ['note', 'phone', 'email', 'eligibility_note', 'rank_text', 'avg_score'].includes(field)
+    // foundation_credit_met 是下拉選單，跟 status／eligibility_status 一樣選了就立即存檔
     saveTimers.current[key] = setTimeout(async () => {
       const { error } = await supabase.from('applicants').update({ [field]: value }).eq('id', id)
       if (error) {
@@ -128,16 +168,21 @@ function ApplicantTable() {
         setSavedFlag(`已儲存 ✓ ${fmtTime(new Date())}`)
         setTimeout(() => setSavedFlag(''), 2500)
       }
-    }, field === 'note' || field === 'phone' || field === 'email' ? 600 : 0)
+    }, isTextField ? 600 : 0)
   }
 
   const counts = useMemo(() => {
-    const c = { total: rows.length, 未確認: 0, 已收件: 0, 格式不符待補件: 0, 已補件收件: 0, 未提交申請書: 0, noContact: 0, 放棄: 0, lateSubmit: 0 }
+    const c = {
+      total: rows.length, 未確認: 0, 已收件: 0, 格式不符待補件: 0, 已補件收件: 0, 未提交申請書: 0,
+      noContact: 0, 放棄: 0, lateSubmit: 0, 資格不符: 0, 資格未判定: 0,
+    }
     for (const r of rows) {
       c[r.status] = (c[r.status] || 0) + 1
       if (!r.phone && !r.email) c.noContact += 1
       if (r.notify_stage === '放棄') c.放棄 += 1
       if (r.status === '已收件' && r.notify_stage) c.lateSubmit += 1
+      if (r.eligibility_status === '不符') c.資格不符 += 1
+      if (!r.eligibility_status || r.eligibility_status === '未判定') c.資格未判定 += 1
     }
     return c
   }, [rows])
@@ -151,7 +196,8 @@ function ApplicantTable() {
         r.student_id.toLowerCase().includes(q) ||
         r.department.toLowerCase().includes(q)
       const matchStatus = !statusFilter || r.status === statusFilter
-      return matchQ && matchStatus
+      const matchEligibility = !eligibilityFilter || (r.eligibility_status || '未判定') === eligibilityFilter
+      return matchQ && matchStatus && matchEligibility
     })
     // 排序：格式不符待補件（1）→ 未提交申請書（2）→ 格式補件完成／已補件收件（3）
     // → 未繳件補完／已收件但曾走過通知流程（4）→ 其餘一般已收件、未確認（最後）
@@ -168,10 +214,10 @@ function ApplicantTable() {
       if (ra !== rb) return ra - rb
       return a.id - b.id
     })
-  }, [rows, search, statusFilter])
+  }, [rows, search, statusFilter, eligibilityFilter])
 
   // 各系所統計：政治系／經濟系／社會系／社工系／外系（其餘系所合併），
-  // 統計申請人數、格式不合（含已補件完成）、未繳件（含後補）、放棄人數
+  // 統計申請人數、格式不合（含已補件完成）、未繳件（含後補）、放棄人數、資格不符人數
   const classifyDept = (dep) => {
     if (!dep) return '外系'
     if (dep.startsWith('政治系')) return '政治系'
@@ -185,7 +231,7 @@ function ApplicantTable() {
   const deptStats = useMemo(() => {
     const map = {}
     for (const key of DEPT_ORDER) {
-      map[key] = { department: key, total: 0, formatIssue: 0, missing: 0, abandoned: 0 }
+      map[key] = { department: key, total: 0, formatIssue: 0, missing: 0, abandoned: 0, ineligible: 0 }
     }
     for (const r of rows) {
       const dep = classifyDept(r.department)
@@ -193,6 +239,7 @@ function ApplicantTable() {
       if (r.status === '格式不符待補件' || r.status === '已補件收件') map[dep].formatIssue += 1
       if (r.status === '未提交申請書' || (r.status === '已收件' && r.notify_stage)) map[dep].missing += 1
       if (r.notify_stage === '放棄') map[dep].abandoned += 1
+      if (r.eligibility_status === '不符') map[dep].ineligible += 1
     }
     return DEPT_ORDER.map((key) => map[key])
   }, [rows])
@@ -216,6 +263,12 @@ function ApplicantTable() {
           </div>
         )}
 
+        {counts.資格不符 > 0 && (
+          <div style={S.issueBar}>
+            提醒：目前有 {counts.資格不符} 位經第一階段（平均成績／名次）判定為「不符」資格，請確認是否需個別通知或進入後續處理流程。
+          </div>
+        )}
+
         <div style={S.stats}>
           <Stat label="申請總人數" value={counts.total} />
           <Stat label="放棄" value={counts.放棄} tone="issue" />
@@ -227,6 +280,7 @@ function ApplicantTable() {
             tone="warn"
             sub={`原名單共 ${counts.未提交申請書 + counts.lateSubmit} 人・已提交 ${counts.lateSubmit} 人・放棄 ${counts.放棄} 人`}
           />
+          <Stat label="第一階段資格不符" value={counts.資格不符} tone="issue" sub={`尚未判定 ${counts.資格未判定} 人`} />
         </div>
 
         <div style={S.controls}>
@@ -238,8 +292,16 @@ function ApplicantTable() {
             style={S.search}
           />
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={S.filterSelect}>
-            <option value="">全部狀態</option>
+            <option value="">全部收件狀態</option>
             {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          <select value={eligibilityFilter} onChange={(e) => setEligibilityFilter(e.target.value)} style={S.filterSelect}>
+            <option value="">全部資格狀態</option>
+            {ELIGIBILITY_OPTIONS.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
@@ -268,6 +330,7 @@ function ApplicantTable() {
                   <th style={S.deptTh}>格式不合人數（含已補件完成）</th>
                   <th style={S.deptTh}>未繳件人數（含後補）</th>
                   <th style={S.deptTh}>放棄人數</th>
+                  <th style={S.deptTh}>資格不符人數</th>
                 </tr>
               </thead>
               <tbody>
@@ -278,6 +341,7 @@ function ApplicantTable() {
                     <td style={S.deptTd}>{d.formatIssue}</td>
                     <td style={S.deptTd}>{d.missing}</td>
                     <td style={S.deptTd}>{d.abandoned}</td>
+                    <td style={S.deptTd}>{d.ineligible}</td>
                   </tr>
                 ))}
               </tbody>
@@ -296,8 +360,12 @@ function ApplicantTable() {
                 <th style={{ ...S.th, width: 130 }}>電話</th>
                 <th style={{ ...S.th, width: 160 }}>Email</th>
                 <th style={{ ...S.th, width: 170 }}>申請志願</th>
+                <th style={{ ...S.th, width: 90 }}>平均成績</th>
+                <th style={{ ...S.th, width: 80 }}>名次</th>
+                <th style={{ ...S.th, width: 100 }}>基礎課程3學分</th>
                 <th style={{ ...S.th, width: 150 }}>收件 / 審查狀態</th>
-                <th style={{ ...S.th, width: 240 }}>備註</th>
+                <th style={{ ...S.th, width: 190 }}>第一階段資格</th>
+                <th style={{ ...S.th, width: 220 }}>備註</th>
               </tr>
             </thead>
             <tbody>
@@ -306,7 +374,7 @@ function ApplicantTable() {
               ))}
               {!loading && visibleRows.length === 0 && (
                 <tr>
-                  <td colSpan={9} style={{ ...S.td, textAlign: 'center', color: '#5b6570' }}>
+                  <td colSpan={13} style={{ ...S.td, textAlign: 'center', color: '#5b6570' }}>
                     沒有符合條件的申請人
                   </td>
                 </tr>
@@ -316,7 +384,7 @@ function ApplicantTable() {
         </div>
 
         <footer style={S.footer}>
-          資料儲存於 Supabase（table: applicants）・部署於 Netlify / GitHub Pages
+          資料儲存於 Supabase（table: applicants）・部署於 Vercel
         </footer>
       </div>
     </div>
@@ -325,8 +393,11 @@ function ApplicantTable() {
 
 function Row({ r, onChange }) {
   const isLateSubmit = r.status === '已收件' && !!r.notify_stage
+  const eligibility = r.eligibility_status || '未判定'
+  const eligibilityHints = buildEligibilityHints(r)
   const rc =
     r.status === '未提交申請書' && r.notify_stage === '放棄' ? S.rowAbandoned
+    : eligibility === '不符' ? S.rowIneligible
     : r.status === '格式不符待補件' ? S.rowIssue
     : r.status === '未提交申請書' ? S.rowMissing
     : r.status === '已補件收件' ? S.rowResupplied
@@ -372,6 +443,43 @@ function Row({ r, onChange }) {
         ))}
       </td>
       <td style={S.td}>
+        <input
+          type="number"
+          step="0.01"
+          value={r.avg_score ?? ''}
+          placeholder="待填"
+          onChange={(e) => onChange(r.id, 'avg_score', e.target.value === '' ? null : Number(e.target.value))}
+          style={{ ...S.inputSm, width: 76, ...(r.avg_score != null ? {} : S.inputMissing) }}
+        />
+      </td>
+      <td style={S.td}>
+        <input
+          type="text"
+          value={r.rank_text || ''}
+          placeholder="例：5/45"
+          onChange={(e) => onChange(r.id, 'rank_text', e.target.value)}
+          style={{ ...S.inputSm, width: 68, ...(r.rank_text ? {} : S.inputMissing) }}
+        />
+      </td>
+      <td style={S.td}>
+        <select
+          value={r.foundation_credit_met || '待確認'}
+          onChange={(e) => onChange(r.id, 'foundation_credit_met', e.target.value)}
+          style={{
+            ...S.select,
+            width: 84,
+            background: FOUNDATION_STYLE[r.foundation_credit_met || '待確認']?.bg,
+            color: FOUNDATION_STYLE[r.foundation_credit_met || '待確認']?.fg,
+          }}
+        >
+          {FOUNDATION_OPTIONS.map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
+      </td>
+      <td style={S.td}>
         <select
           value={r.status}
           onChange={(e) => onChange(r.id, 'status', e.target.value)}
@@ -409,6 +517,37 @@ function Row({ r, onChange }) {
               </option>
             ))}
           </select>
+        )}
+      </td>
+      <td style={S.td}>
+        <select
+          value={eligibility}
+          onChange={(e) => onChange(r.id, 'eligibility_status', e.target.value)}
+          style={{
+            ...S.select,
+            width: 90,
+            background: ELIGIBILITY_STYLE[eligibility]?.bg,
+            color: ELIGIBILITY_STYLE[eligibility]?.fg,
+          }}
+        >
+          {ELIGIBILITY_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+        {eligibilityHints.length > 0 && (
+          <div style={S.eligibilityHint}>
+            ⚠ 參考提示：{eligibilityHints.join('、')}
+          </div>
+        )}
+        {eligibility === '不符' && (
+          <textarea
+            value={r.eligibility_note || ''}
+            placeholder="不符原因"
+            onChange={(e) => onChange(r.id, 'eligibility_note', e.target.value)}
+            style={{ ...S.textarea, width: 140, minHeight: 36, marginTop: 6 }}
+          />
         )}
       </td>
       <td style={S.td}>
@@ -466,6 +605,16 @@ const S = {
     color: '#6b5200',
     marginBottom: 16,
   },
+  issueBar: {
+    background: '#fbeeeb',
+    border: '1px solid #efc6ba',
+    borderRadius: 8,
+    padding: '10px 14px',
+    fontSize: 12.5,
+    lineHeight: 1.7,
+    color: '#a3402f',
+    marginBottom: 16,
+  },
   stats: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 18 },
   stat: { background: '#fff', border: '1px solid #e3e6ea', borderRadius: 10, padding: '12px 18px', minWidth: 110 },
   statNum: { fontSize: 22, fontWeight: 700, lineHeight: 1.1 },
@@ -485,6 +634,8 @@ const S = {
   rowLateSubmit: { background: '#e3f1f4' },  // 已收件但曾走通知流程（原未提交，已補交）→ 淡藍綠
   rowDone: { background: '#eaf4ec' },        // 已收件 → 淡綠
   rowAbandoned: { background: '#ececea', opacity: 0.55 }, // 未提交申請書＋已放棄 → 淡灰、整列變淺
+  rowIneligible: { background: '#f7dcd4' },  // 第一階段資格不符 → 較深的紅，優先於其他收件狀態底色顯示
+  eligibilityHint: { fontSize: 10.5, color: '#a3402f', marginTop: 4, lineHeight: 1.5, maxWidth: 130, whiteSpace: 'normal' },
   resuppliedTag: { fontSize: 10.5, color: '#6b3fa0', marginTop: 4 },
   lateSubmitTag: { fontSize: 10.5, color: '#2f7080', marginTop: 4 },
   dept: { color: '#5b6570', fontSize: 12 },
